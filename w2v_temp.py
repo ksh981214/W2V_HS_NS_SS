@@ -123,7 +123,7 @@ def CBOW(centerWord, contextWords, inputMatrix, outputMatrix, center_word_activa
     return loss, grad_emb, grad_out
 
 #원래 iter 100000
-def word2vec_trainer(corpus, nonleaf_ind, word2code, code2idx, mode="CBOW", dimension=100, learning_rate=0.025, iteration=2):
+def word2vec_trainer(corpus, nonleaf_ind, word2code, code2idx, mode="CBOW", dimension=100, learning_rate=0.025, iteration=2, ):
 # Xavier initialization of weight matrices
     W_emb = torch.randn(len(word2code), dimension) / (dimension**0.5) 
     W_out = torch.randn(len(nonleaf_ind), dimension) / (dimension**0.5)  
