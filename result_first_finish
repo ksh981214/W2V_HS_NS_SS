@@ -1,0 +1,173 @@
+mode:  CBOW
+update_system:  HS
+sub_sampling:  True
+Start Huffman Coding
+Finish Huffman Coding
+Start SubSampling...
+Finish SubSampling...
+Loss : 4.619435
+Loss : 7.629161
+Loss : 7.554306
+Loss : 7.489556
+Loss : 7.473036
+Loss : 7.404771
+Loss : 7.365088
+Loss : 7.353482
+Loss : 7.321994
+Loss : 7.300736
+consum_time:  90.2444257736206
+mode:  CBOW
+update_system:  HS
+sub_sampling:  False
+Start Huffman Coding
+Finish Huffman Coding
+Loss : 7.931024
+Loss : 7.574516
+Loss : 7.565954
+Loss : 7.523326
+Loss : 7.432370
+Loss : 7.435537
+Loss : 7.314448
+Loss : 7.313888
+Loss : 7.333619
+Loss : 7.302413
+consum_time:  72.21610045433044
+mode:  CBOW
+update_system:  NS
+sub_sampling:  True
+Start SubSampling...
+Finish SubSampling...
+Loss : 4.817856
+Loss : 4.855775
+Loss : 4.808522
+Loss : 4.773329
+Loss : 4.740289
+Loss : 4.719905
+Loss : 4.702385
+Loss : 4.686031
+Loss : 4.669852
+Loss : 4.658839
+consum_time:  65.91978788375854
+mode:  CBOW
+update_system:  NS
+sub_sampling:  False
+Loss : 4.976956
+Loss : 4.846920
+Loss : 4.804698
+Loss : 4.779494
+Loss : 4.745263
+Loss : 4.715584
+Loss : 4.702724
+Loss : 4.686805
+Loss : 4.673062
+Loss : 4.664344
+consum_time:  57.85344910621643
+mode:  CBOW
+update_system:  BS
+sub_sampling:  True
+Start SubSampling...
+Finish SubSampling...
+Loss : 8.227448
+Loss : 8.080153
+Loss : 7.529542
+Loss : 7.023062
+Loss : 6.591081
+Loss : 6.141664
+Loss : 5.811432
+Loss : 5.476803
+Loss : 5.159751
+Loss : 4.914608
+consum_time:  135.95627689361572
+mode:  CBOW
+update_system:  BS
+sub_sampling:  False
+Loss : 7.720407
+Loss : 8.085998
+Loss : 7.520512
+Loss : 6.999561
+Loss : 6.612205
+Loss : 6.179368
+Loss : 5.830789
+Loss : 5.520110
+Loss : 5.167843
+Loss : 4.937814
+consum_time:  126.2503125667572
+mode:  SG
+update_system:  HS
+sub_sampling:  True
+Start Huffman Coding
+Finish Huffman Coding
+Start SubSampling...
+Finish SubSampling...
+Loss : 8.575636
+Loss : 8.530482
+consum_time:  534.4196174144745
+mode:  SG
+update_system:  HS
+sub_sampling:  False
+Start Huffman Coding
+Finish Huffman Coding
+Loss : 8.558167
+Loss : 8.585863
+Loss : 8.533614
+consum_time:  533.0852093696594
+mode:  SG
+update_system:  NS
+sub_sampling:  True
+Start SubSampling...
+Finish SubSampling...
+Loss : 4.888837
+Loss : 4.837421
+Loss : 4.834360
+Loss : 4.852441
+Loss : 4.849730
+Loss : 4.834894
+Loss : 4.816678
+Loss : 4.797406
+Loss : 4.775476
+Loss : 4.759443
+consum_time:  433.9811954498291
+mode:  SG
+update_system:  NS
+sub_sampling:  False
+Loss : 4.836668
+Loss : 4.837305
+Loss : 4.832380
+Loss : 4.851382
+Loss : 4.848599
+Loss : 4.834126
+Loss : 4.815118
+Loss : 4.794005
+Loss : 4.773140
+Loss : 4.756222
+consum_time:  434.2433753013611
+mode:  SG
+update_system:  BS
+sub_sampling:  True
+Start SubSampling...
+Finish SubSampling...
+Loss : 8.274198
+Loss : 8.258637
+Loss : 8.135089
+Loss : 7.820033
+Loss : 7.507713
+Loss : 7.277118
+Loss : 7.059358
+Loss : 6.910457
+Loss : 6.789712
+Loss : 6.692719
+consum_time:  1579.6182243824005
+mode:  SG
+update_system:  BS
+sub_sampling:  False
+Loss : 8.286320
+Loss : 8.257129
+Loss : 8.127517
+Loss : 7.816008
+Loss : 7.523669
+Loss : 7.272905
+Loss : 7.077234
+Loss : 6.916178
+Loss : 6.761893
+Loss : 6.680465
+consum_time:  1204.6512608528137

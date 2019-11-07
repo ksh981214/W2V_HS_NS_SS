@@ -7,6 +7,8 @@ import math
 import operator
 import numpy as np
 
+import time
+
 from huffman import HuffmanCoding
 
 def getRandomContext(corpus, C=4):
@@ -18,30 +20,39 @@ def getRandomContext(corpus, C=4):
 
     centerword = corpus[wordID]
     context = [w for w in context if w != centerword]
-    print(context)
+    #print(context)
     if len(context) > 0:
         return centerword, context
     else:
         return getRandomContext(corpus, C)
     
+def sigmoid(x):
+    return 1/(1+np.exp(-x))
+    
 def get_prob_word_code(word_code, score_vector):
     p_word = 1.0
+    zero_lst=[]
     for i, code in enumerate(word_code):
         if code == '0':
-            p_word *= 1/(1+ torch.exp(score_vector[i]))
+            #p_word *= 1/(1+ torch.exp(score_vector[i]))
+            p_word *= sigmoid(score_vector[i])
+            zero_lst.append(i)
         elif code == '1':
-            p_word *= (1-(1/(1+ torch.exp(score_vector[i]))))
+            #p_word *= (1-(1/(1+ torch.exp(score_vector[i]))))
+            p_word *= (1 - sigmoid(score_vector[i]))
         else:
             print("what is it?", code)
-            exit()
-    return p_word
+    return p_word, zero_lst
 
-def get_activated_node(len_corpus, sampling_num, prob_table):
-    activated_node_lst = []
+def get_activated_node(len_corpus, sampling_num, prob_table, correct_idx):
+    activated_node_lst = [correct_idx]
+    lotto_num = random.randint(0, len_corpus - 1)
     for i in range(sampling_num):
-        lotto_num = random.randint(0, len(corpus) - 1)
-        activated_node_lst.append(prob_table[lotto_num])
-        
+        while correct_idx == lotto_num :    
+            lotto_num = random.randint(0, len_corpus - 1)
+        activated_node_lst.append(int(prob_table[lotto_num]))
+        lotto_num = random.randint(0, len_corpus - 1)
+    #print(activated_node_lst)
     return activated_node_lst
 
 def Skipgram(centerWord, contextWord, inputMatrix, outputMatrix, update_system, feed_dict=None):
@@ -51,7 +62,6 @@ def Skipgram(centerWord, contextWord, inputMatrix, outputMatrix, update_system, 
 # inputMatrix : Weight matrix of input (type:torch.tesnor(V,D))         #
 # outputMatrix : Weight matrix of output (type:torch.tesnor(V,D))       #
 # N : len(non-leaf node)
-# K : centerword와 관련된 노드의 갯수 N > K
 #########################################################################
     
     if update_system == "HS":
@@ -65,14 +75,64 @@ def Skipgram(centerWord, contextWord, inputMatrix, outputMatrix, update_system, 
         score_vector = torch.matmul(center_word_vector, torch.t(outputMatrix)) # (1,D) * (D,K) = (1,K)
         score_vector = torch.t(score_vector) # (K,1)
         
-        p_context_word = get_prob_word_code(context_word_code, score_vector)
+        p_context_word,zero_lst = get_prob_word_code(context_word_code, score_vector)
 
         loss = -torch.log(p_context_word)
+        
+        #수정해야함
+        score_grad = score_vector
+        score_grad[zero_lst] -= 1
+        
+        grad_out = torch.matmul(score_grad, center_word_vector) #(K,1) * (1,D) = (K,D)
+        grad_emb = torch.matmul(torch.t(score_grad), outputMatrix) #(1,K) * (K,D) = (1,D)
+        
+    elif update_system == "NS":
 
-        score_grad = score_vector - 1
+        activated_node_lst =  feed_dict['activated_node_lst']
+        
+        center_word_vector = inputMatrix[centerWord,:].view(1,-1) #1,D
+        
+        score_vector = torch.matmul(center_word_vector, torch.t(outputMatrix)) # (1,D) * (D,K) = (1,K)
+        score_vector = torch.t(score_vector) # (K,1)
+        
+        loss = 0.0
+        
+        for i, idx in enumerate(activated_node_lst):
+            if idx == contextWord:
+                context_idx = i
+                loss -= np.log(sigmoid(score_vector[i]))
+            else:
+                loss -= np.log((1 - sigmoid(score_vector[i])))
+
+        #get grad
+        score_grad = score_vector #(K,1)
+        score_grad[context_idx] -= 1
 
         grad_out = torch.matmul(score_grad, center_word_vector) #(K,1) * (1,D) = (K,D)
         grad_emb = torch.matmul(torch.t(score_grad), outputMatrix) #(1,K) * (K,D) = (1,D)
+        
+    elif update_system == "BS":
+        #get hidden layer
+        center_word_vector = inputMatrix[centerWord,:].view(1,-1) #1,D
+
+        #score
+        score_vector = torch.matmul(center_word_vector, torch.t(outputMatrix)) # (1,D) * (D,V) = (1,V)
+
+        e = torch.exp(score_vector) 
+        softmax = e / (torch.sum(e, dim=1, keepdim=True)) #1,V
+
+        loss = -torch.log(softmax[:,contextWord])
+
+        #get grad
+        softmax_grad = softmax
+        softmax_grad[:,contextWord] -= 1.0
+
+        grad_out = torch.matmul(torch.t(softmax_grad), center_word_vector) #(V,1) * (1,D) = (V,D)
+        grad_emb = torch.matmul(softmax_grad, outputMatrix) #(1,V) * (V,D) = (1,D)
+        
+    else:
+        print("What is it?")
+        exit()
     
 ###############################  Output  ################################
 # loss : Loss value (type:torch.tensor(1))                              #
@@ -101,17 +161,62 @@ def CBOW(centerWord, contextWords, inputMatrix, outputMatrix, update_system, fee
         score_vector = torch.matmul(sum_of_context_words_vector, torch.t(outputMatrix)) # (1,D) * (D,K) = (1,K)
         score_vector = torch.t(score_vector) # (K,1)
 
-        p_center_word = get_prob_word_code(center_word_code, score_vector)
+        p_center_word, zero_lst = get_prob_word_code(center_word_code, score_vector)
         
         loss = -torch.log(p_center_word)
 
-        score_grad = score_vector - 1
+        score_grad = score_vector
+        score_grad[zero_lst] -= 1
 
         grad_out = torch.matmul(score_grad, sum_of_context_words_vector) #(K,1) * (1,D) = (K,D)
         grad_emb = torch.matmul(torch.t(score_grad), outputMatrix) #(1,K) * (K,D) = (1,D)
         
-    if update_system == "NS":
-        pass
+    elif update_system == "NS":
+        activated_node_lst =  feed_dict['activated_node_lst']
+
+        sum_of_context_words_vector = torch.sum(inputMatrix[contextWords, :],dim=0,keepdim=True) #1,D
+        
+        score_vector = torch.matmul(sum_of_context_words_vector, torch.t(outputMatrix)) # (1,D) * (D,K) = (1,K)
+        score_vector = torch.t(score_vector) # (K,1)
+        
+        loss = 0.0
+        for i, idx in enumerate(activated_node_lst):
+            if idx == centerWord:
+                center_idx = i
+                loss -= np.log(sigmoid(score_vector[i]))
+            else:
+                loss -= np.log((1 - sigmoid(score_vector[i])))
+
+        #get grad
+        score_grad = score_vector #(K,1)
+        score_grad[center_idx] -= 1
+
+        grad_out = torch.matmul(score_grad, sum_of_context_words_vector) #(K,1) * (1,D) = (K,D)
+        grad_emb = torch.matmul(torch.t(score_grad), outputMatrix) #(1,K) * (K,D) = (1,D)
+    
+    elif update_system == "BS":
+
+        sum_of_context_words_vector = torch.sum(inputMatrix[contextWords, :],dim=0,keepdim=True) #1,D
+
+        score_vector = torch.matmul(sum_of_context_words_vector, torch.t(outputMatrix)) # (1,D) * (D,V) = (1,V)
+
+        e = torch.exp(score_vector) 
+        softmax = e / (torch.sum(e, dim=1, keepdim=True)) #1,V
+        #print(softmax.size())
+        #print(softmax)
+
+        loss = -torch.log(softmax[:,centerWord])
+
+        #get grad
+        softmax_grad = softmax
+        softmax_grad[:,centerWord] -= 1.0
+
+        grad_out = torch.matmul(torch.t(softmax_grad), sum_of_context_words_vector) #(1,V) * (1,D) = (V,D)
+        grad_emb = torch.matmul(softmax_grad, outputMatrix) #(1,V) * (V,D) = (1,D)
+    
+    else:
+        print("What is it?")
+        exit()
 
 ###############################  Output  ################################
 # loss : Loss value (type:torch.tensor(1))                              #
@@ -123,18 +228,31 @@ def CBOW(centerWord, contextWords, inputMatrix, outputMatrix, update_system, fee
 
 
 #원래 iter 100000
-def word2vec_trainer(corpus, word2idx, mode, update_system, sub_sampling, feed_dict=None, dimension=100, learning_rate=0.025, iteration=100000):
+def word2vec_trainer(corpus, word2idx, mode, update_system, sub_sampling, feed_dict=None, dimension=300, learning_rate=0.01, iteration=50000):
     #print(len(corpus))
     #print(corpus)
     feed_dict2 = {}
+    #print(corpus)
+    
+    #Only once
+    if sub_sampling is True:
+        print("Start SubSampling...")
+        prob_of_ss = feed_dict['prob_of_ss']
+        destiny = random.random()
+        for word in corpus:
+            #사라질운명
+            if destiny < prob_of_ss[word]:
+                corpus.remove(word) #맨 앞에 하나만 사라짐.
+            else:
+                pass
+        print("Finish SubSampling...")
+        
     
     if update_system == "HS":
         
         word2code = feed_dict['word2code']
         nonleaf_idx = feed_dict['non_leaf_code2idx']
-        
         code2idx = feed_dict['code2idx']
-        
         
         W_emb = torch.randn(len(word2idx), dimension) / (dimension**0.5) 
         W_out = torch.randn(len(nonleaf_idx), dimension) / (dimension**0.5)
@@ -162,8 +280,6 @@ def word2vec_trainer(corpus, word2idx, mode, update_system, sub_sampling, feed_d
                 context_word_activated_node_code_lst = []
                 node_code=''
                 for char in word_code:
-                    #node_code += char
-                    #if node_code not in context_words_activated_node_code_lst and len(node_code) != len(word_code):
                     context_word_activated_node_code_lst.append(node_code)
                     node_code += char
                 context_words_activated_node_code_lst.append(context_word_activated_node_code_lst)
@@ -195,11 +311,11 @@ def word2vec_trainer(corpus, word2idx, mode, update_system, sub_sampling, feed_d
                 for i, contextInd in enumerate(contextInds):
                     
                     feed_dict2['context_word_code'] = context_words_codes[i]
+                    
                     L, G_emb, G_out = Skipgram(centerInd, contextInd, W_emb, W_out[context_words_activated_node_idx_lst[i]], update_system, feed_dict2)
                     W_emb[centerInd] -= learning_rate*G_emb.squeeze()
                     W_out[context_words_activated_node_idx_lst[i]] -= learning_rate*G_out
                     losses.append(L)
-                    #print(i)
             else:
                 print("Unkwnown mode : "+mode)
                 exit()
@@ -217,31 +333,45 @@ def word2vec_trainer(corpus, word2idx, mode, update_system, sub_sampling, feed_d
         losses=[]
         
         prob_table = feed_dict['prob_table']
+        sum_of_pow_freq = feed_dict['sum_of_pow_freq']
         
         sampling_num = 5
+        #len_corpus = len(corpus)
         
         for i in range(iteration):
             #Training word2vec using SGD
+            
+            centerword, context = getRandomContext(corpus, window_size)
 
             centerInd =  word2idx[centerword]
             contextInds = [word2idx[i] for i in context]            
             
             if mode == "CBOW":
-                activated_node_lst = []
-                for i in range(sampling_num):
-                    lotto_num = random.randint(0, len(corpus) - 1)
-                    activated_node_lst.append(prob_table[lotto_num])
+                #except_idx = centerInd
                 
-                L, G_emb, G_out = CBOW(center_word_code, contextInds, W_emb, W_out[activated_node_lst], mode)
+                activated_node_lst = get_activated_node(sum_of_pow_freq, sampling_num, prob_table, centerInd)
+                activated_node_lst.append(centerInd)
+                
+                feed_dict2['activated_node_lst']=activated_node_lst
+                
+                L, G_emb, G_out = CBOW(centerInd, contextInds, W_emb, W_out[activated_node_lst], update_system, feed_dict2)
                 W_emb[contextInds] -= learning_rate*G_emb
                 W_out[activated_node_lst] -= learning_rate*G_out
                 losses.append(L)
+                
             elif mode=="SG":
                 for contextInd in contextInds:
-                    L, G_emb, G_out = Skipgram(centerInd, contextInd, W_emb, W_out[context_words_activated_node_idx_lst])
+                    #except_idx = contextInd
+                    
+                    activated_node_lst = get_activated_node(sum_of_pow_freq, sampling_num, prob_table, contextInd)
+                    activated_node_lst.append(contextInd)
+                    
+                    feed_dict2['activated_node_lst'] = activated_node_lst
+                    
+                    L, G_emb, G_out = Skipgram(centerInd, contextInd, W_emb, W_out[activated_node_lst], update_system, feed_dict2)
                     W_emb[centerInd] -= learning_rate*G_emb.squeeze()
-                    W_out[context_words_activated_node_idx_lst] -= learning_rate*G_out
-                    losses.append(L.item())
+                    W_out[activated_node_lst] -= learning_rate*G_out
+                    losses.append(L)
                     
             else:
                 print("Unkwnown mode : "+mode)
@@ -265,18 +395,17 @@ def word2vec_trainer(corpus, word2idx, mode, update_system, sub_sampling, feed_d
             contextInds = [word2idx[i] for i in context]
 
             if mode=="CBOW":
-                L, G_emb, G_out = CBOW(centerInd, contextInds, W_emb, W_out)
+                L, G_emb, G_out = CBOW(centerInd, contextInds, W_emb, W_out, update_system)
                 W_emb[contextInds] -= learning_rate*G_emb
                 W_out -= learning_rate*G_out
-                losses.append(L.item())
+                losses.append(L)
 
             elif mode=="SG":
                 for contextInd in contextInds:
-                    L, G_emb, G_out = Skipgram(centerInd, contextInd, W_emb, W_out)
+                    L, G_emb, G_out = Skipgram(centerInd, contextInd, W_emb, W_out, update_system)
                     W_emb[centerInd] -= learning_rate*G_emb.squeeze()
                     W_out -= learning_rate*G_out
-                    losses.append(L.item())
-
+                    losses.append(L)
             else:
                 print("Unkwnown mode : "+mode)
                 exit()
@@ -361,6 +490,8 @@ def find_sim_word(W_emb, w1, w2, w3, w2c, c2i):
 def main():
     
     parser = argparse.ArgumentParser(description='Word2vec')
+    parser.add_argument('part', metavar='partition', type=str,
+                        help='"part" if you want to train on a part of corpus, "full" if you want to train on full corpus')
     parser.add_argument('mode', metavar='mode', type=str,
                         help='"SG" for skipgram, "CBOW" for CBOW')
     parser.add_argument('update_system', metavar='update_system', type=str,
@@ -368,21 +499,32 @@ def main():
     parser.add_argument('sub_sampling', metavar='sub_sampling', type=bool,
                         help='true for sub_sampling or false for not')
     args = parser.parse_args()
+    part = args.part
     mode = args.mode
     update_system = args.update_system
     sub_sampling = args.sub_sampling
     
     print("loading...")
     
-    text = open('questions-words.txt',mode='r').readlines() #각 줄을 읽어서 리스트로 반환
-    text =  text[1:]
+#     text = open('questions-words.txt',mode='r').readlines() #각 줄을 읽어서 리스트로 반환
+#     text =  text[1:]
 
-    corpus=[]
-    for t in text:
-        t = t.lower()
-        corpus += t.split()
-    #print(corpus)
+#     corpus=[]
+#     for t in text:
+#         t = t.lower()
+#         corpus += t.split()
+
+    if part=="part":
+        text = open('text8',mode='r').readlines()[0][:1000000] #Load a part of corpus for debugging
+    elif part=="full":
+        text = open('text8',mode='r').readlines()[0] #Load full corpus for submission
+    else:
+        print("Unknown argument : " + part)
+        exit()
+        
+    
     print("tokenizing...")
+    corpus = text.split()
     frequency = Counter(corpus) #dict
     processed = []
     #Discard rare words
@@ -406,114 +548,206 @@ def main():
     
     feed_dict = {} #update_system에 따라 필요한 것 전달하는 용도
     
-    '''
-    Sub_Sampling or Not
-    '''
-    if sub_sampling == True:
-        sum_of_freq = 0
-        for word, freq in frequency.items():
-            sum_of_freq += freq
+#     '''
+#     Sub_Sampling or Not
+#     '''
+#     if sub_sampling == True:
+#         sum_of_freq = 0
+#         for word, freq in frequency.items():
+#             sum_of_freq += freq
         
-        #print(sum_of_freq) 
+#         #print(sum_of_freq) 
         
-        ratio_of_freq = {}
-        for word, freq in frequency.items():
-            ratio_of_freq[word] = freq / sum_of_freq
+#         ratio_of_freq = {}
+#         for word, freq in frequency.items():
+#             ratio_of_freq[word] = freq / sum_of_freq
         
-        #print(ratio_of_freq) #f(w_i)
+#         #print(ratio_of_freq) #f(w_i)
         
-        t = 0.00005
-        prob_of_ss = {}
-        for word, freq in frequency.items():
-            prob_of_ss[word] = 1- (math.pow(t / ratio_of_freq[word],0.5)) #P(w_i) , discard frequent words with prob
-            
-        #print(prob_of_ss)
-        feed_dict['prob_of_ss'] = prob_of_ss
+#         #t = 0.00005 #corpus의 크기가 작으므로 t를 키워야 전체 값이 작아지면서 단어들이 적게 사라짐. 너무 많이 사라지면 학습이 힘듬.
+#         t = 0.0005
+#         prob_of_ss = {}
+#         for word, freq in frequency.items():
+#             prob_of_ss[word] = 1- (math.pow(t / ratio_of_freq[word],0.5)) #P(w_i) , discard frequent words with prob
+
+#         feed_dict['prob_of_ss'] = prob_of_ss
         
     
-    '''
-    For Hierarchical Softmax
-    '''
-    if update_system == "HS":
-        '''
-        Huffman Coding
-        '''
-        print("Start Huffman Coding")
+#     '''
+#     For Hierarchical Softmax
+#     '''
+#     if update_system == "HS":
+#         '''
+#         Huffman Coding
+#         '''
+#         print("Start Huffman Coding")
 
-        HC = HuffmanCoding()
-        _,_ = HC.build(frequency) 
+#         HC = HuffmanCoding()
+#         _,_ = HC.build(frequency) 
 
-        print("Finish Huffman Coding")
+#         print("Finish Huffman Coding")
 
-        code2idx = {}
+#         code2idx = {}
         
-        for word,code in HC.codes.items():
-            code2idx[code] = word2idx[word]
+#         for word,code in HC.codes.items():
+#             code2idx[code] = word2idx[word]
         
-        word2code = HC.codes
-        code2word = HC.reverse_mapping
+#         word2code = HC.codes
+#         code2word = HC.reverse_mapping
         
-        #word 관련
-        feed_dict['word2code']= word2code
-        feed_dict['code2word']= code2word
-        feed_dict['code2idx']= code2idx
-        feed_dict['idx2word']= idx2word
+#         #word 관련
+#         feed_dict['word2code']= word2code
+#         feed_dict['code2word']= code2word
+#         feed_dict['code2idx']= code2idx
+#         feed_dict['idx2word']= idx2word
         
-        #non_leaf 관련
-        feed_dict['non_leaf_code2idx'] = HC.nonleaf_ind
+#         #non_leaf 관련
+#         feed_dict['non_leaf_code2idx'] = HC.nonleaf_ind
         
-    '''
-    For Negative Sampling
-    '''
-    if update_system == "NS":
-    #elif True:
-        if sub_sampling is False:
-            sum_of_freq = 0
-            for word, freq in frequency.items():
-                sum_of_freq += freq
-
-            ratio_of_freq = {}
-            for word, freq in frequency.items():
-                ratio_of_freq[word] = freq / sum_of_freq
-        
-#         #확률 방법
-#         sum_of_ratio_freq = 0.0
-#         for word, ratio in ratio_of_freq.items():
-#             sum_of_ratio_freq += math.pow(ratio,0.75)
-
-#         prob_of_ns = {}
+#     '''
+#     For Negative Sampling
+#     '''
+#     if update_system == "NS":        
+#         pow_of_freq = {}
 #         for word, freq in frequency.items():
-#             prob_of_ns[word] = math.pow(ratio_of_freq[word],0.75) / sum_of_ratio_freq #P(w_i) , discard frequent words with prob
-            
-#         #print(prob_of_ns) #P(w_i), 윈도우 내에 등장하지않은 단어가 negative sample로 뽑힐 확률
+#             pow_of_freq[word] = math.pow(freq,0.75)
         
-#         feed_dict['prob_of_ns'] = prob_of_ns
+#         sum_of_pow_freq = 0
+#         for freq in pow_of_freq.values():
+#             sum_of_pow_freq += freq
+#         #테이블 방법
+#         prob_table = np.zeros(int(sum_of_pow_freq))
+#         idx = 0
+#         for word, freq in pow_of_freq.items():
+#             freq = int(freq)
+#             prob_table[idx:idx+freq] = word2idx[word]
+#             idx = idx+freq 
+#         #print(prob_table)
         
-        #테이블 방법
-        prob_table = np.empty(sum_of_freq)
-        idx = 0
+#         feed_dict['prob_table'] = prob_table
+#         feed_dict['sum_of_pow_freq']= int(sum_of_pow_freq) 
         
-        for word, freq in frequency.items():
-            prob_table[idx:idx+freq] = word2idx[word]
-            idx = idx+freq 
-        #print(prob_table)
-        
-        feed_dict['prob_table'] = prob_table
-        
-        exit()
-        
-    '''
-    For Basic Softmax
-    '''
-    if update_system == "BS":
-        pass
+#     '''
+#     For Basic Softmax
+#     '''
+#     if update_system == "BS":
+#         pass
+    
+#     emb,_ = word2vec_trainer(processed, word2idx, mode, update_system, sub_sampling, feed_dict, dimension=64, learning_rate=0.05, iteration=50000)
+    
+    
+    m = ["CBOW", "SG"]
+    u = ["HS","NS","BS"]
+    s = [True, False]
+    
+    
+    for mode in m:
+        for update_system in u:
+            for sub_sampling in s:
+                start = time.time()
+                print("mode: ", mode)
+                print("update_system: ",update_system)
+                print("sub_sampling: ",sub_sampling)
+                '''
+                Sub_Sampling or Not
+                '''
+                if sub_sampling == True:
+                    sum_of_freq = 0
+                    for word, freq in frequency.items():
+                        sum_of_freq += freq
 
-    #emb,_ = word2vec_trainer(processed, word2ind, HC.nonleaf_ind, HC.codes, code2idx, mode, update_system, subsampling, dimension=64, learning_rate=0.05, iteration=50000)
-    emb,_ = word2vec_trainer(processed, word2idx, mode, update_system, sub_sampling, feed_dict, dimension=64, learning_rate=0.05, iteration=50000)
-        
+                    #print(sum_of_freq) 
+
+                    ratio_of_freq = {}
+                    for word, freq in frequency.items():
+                        ratio_of_freq[word] = freq / sum_of_freq
+
+                    #print(ratio_of_freq) #f(w_i)
+
+                    #t = 0.00005 #corpus의 크기가 작으므로 t를 키워야 전체 값이 작아지면서 단어들이 적게 사라짐. 너무 많이 사라지면 학습이 힘듬.
+                    t = 0.0005
+                    prob_of_ss = {}
+                    for word, freq in frequency.items():
+                        prob_of_ss[word] = 1- (math.pow(t / ratio_of_freq[word],0.5)) #P(w_i) , discard frequent words with prob
+
+                    feed_dict['prob_of_ss'] = prob_of_ss
+
+
+                '''
+                For Hierarchical Softmax
+                '''
+                if update_system == "HS":
+                    '''
+                    Huffman Coding
+                    '''
+                    print("Start Huffman Coding")
+
+                    HC = HuffmanCoding()
+                    _,_ = HC.build(frequency) 
+
+                    print("Finish Huffman Coding")
+
+                    code2idx = {}
+
+                    for word,code in HC.codes.items():
+                        code2idx[code] = word2idx[word]
+
+                    word2code = HC.codes
+                    code2word = HC.reverse_mapping
+
+                    #word 관련
+                    feed_dict['word2code']= word2code
+                    feed_dict['code2word']= code2word
+                    feed_dict['code2idx']= code2idx
+                    feed_dict['idx2word']= idx2word
+
+                    #non_leaf 관련
+                    feed_dict['non_leaf_code2idx'] = HC.nonleaf_ind
+
+                '''
+                For Negative Sampling
+                '''
+                if update_system == "NS":        
+                    pow_of_freq = {}
+                    for word, freq in frequency.items():
+                        pow_of_freq[word] = math.pow(freq,0.75)
+
+                    sum_of_pow_freq = 0
+                    for freq in pow_of_freq.values():
+                        sum_of_pow_freq += freq
+                    #테이블 방법
+                    prob_table = np.zeros(int(sum_of_pow_freq))
+                    idx = 0
+                    for word, freq in pow_of_freq.items():
+                        freq = int(freq)
+                        prob_table[idx:idx+freq] = word2idx[word]
+                        idx = idx+freq 
+                    #print(prob_table)
+
+                    feed_dict['prob_table'] = prob_table
+                    feed_dict['sum_of_pow_freq']= int(sum_of_pow_freq) 
+
+                '''
+                For Basic Softmax
+                '''
+                if update_system == "BS":
+                    pass
+
+                emb,_ = word2vec_trainer(processed, word2idx, mode, update_system, sub_sampling, feed_dict, dimension=200, learning_rate=0.05, iteration=100000)
+                
+                consume_time = time.time() - start
+#                 print("dimension: ",dimension)
+#                 print("lr: ", learning_rate)
+#                 print("iteration: ",iteration)
+                print("consum_time: ", consume_time)
+    print("dimension: ",dimension)
+    print("lr: ", learning_rate)
+    print("iteration: ",iteration)
+
     '''
     Test for Training
     '''
+    exit()
     sim_dict = find_sim_word(emb, "germany", "berlin", "france", word2code, code2idx) #마지막에 들어갈 단어는?
     sorted_sim_dict = sorted(sim_dict.items(), key=operator.itemgetter(1), reverse=True)
     #print(sorted_sim_dict)
