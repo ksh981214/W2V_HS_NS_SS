@@ -1,5 +1,9 @@
 # Word2Vec with Skip-gram and CBOW with Hierarchical Softmax, Negative Sampling and Sub-sampling
 
+- Korea University Information Retrieval(COSE 472) Assignment4
+
+-----
+
 If you run "word2vec.py", you can train and test your models.
 - How to run
 ```python
