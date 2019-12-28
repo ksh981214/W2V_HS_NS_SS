@@ -1,6 +1,6 @@
-#Implement Word2Vec Skip-gram and CBOW models with Hierarchical Softmax, Negative Sampling and Sub-sampling in word2vec.py
-If you run "word2vec.py", you can train and test your models.
+# Word2Vec with Skip-gram and CBOW with Hierarchical Softmax, Negative Sampling and Sub-sampling
 --------------------------------------------------------------------------------------------------
+If you run "word2vec.py", you can train and test your models.
 - How to run
 ```python
 python word2vec.py [partition] [mode] [update_system] [sub_sampling]
